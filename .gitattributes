@@ -1,0 +1,50 @@
+# Normalizzazione dei fine riga.
+#
+# Il progetto e' sviluppato su Windows, dove Git converte in CRLF in copia di
+# lavoro. Senza queste regole il file finisce nel repository con i fine riga
+# della macchina di chi committa, e da un'altra macchina l'intero file appare
+# modificato anche quando nessuno lo ha toccato.
+#
+# Regola: nel repository si conserva sempre LF; in copia di lavoro Git usa la
+# convenzione del sistema. Cambiare questo file non tocca i fine riga gia'
+# presenti sul disco, solo quelli che Git scrive da qui in avanti.
+
+# Default: Git decide se un file e' testo, e lo salva con LF
+* text=auto eol=lf
+
+# Esplicito per i tipi presenti nel progetto, cosi' non dipende
+# dall'euristica di Git
+*.py      text eol=lf
+*.md      text eol=lf
+*.txt     text eol=lf
+*.yaml    text eol=lf
+*.yml     text eol=lf
+*.json    text eol=lf
+*.gitignore text eol=lf
+
+# Gli script PowerShell restano CRLF: e' la convenzione di Windows e
+# powershell.exe gestisce male alcuni costrutti in file LF
+*.ps1     text eol=crlf
+*.bat     text eol=crlf
+*.cmd     text eol=crlf
+
+# Binari: mai toccati, mai diffati come testo
+*.ttf     binary
+*.otf     binary
+*.png     binary
+*.jpg     binary
+*.jpeg    binary
+*.webp    binary
+*.pt      binary
+*.pth     binary
+*.onnx    binary
+*.gguf    binary
+*.safetensors binary
+*.pdf     binary
+*.zip     binary
+*.rar     binary
+
+# Linguaggio dichiarato per le statistiche del repository: senza questo
+# GitHub conta i font e il JSON del workflow e sbaglia il riepilogo
+*.json    linguist-generated=true
+fonts/**  linguist-vendored=true
