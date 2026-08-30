@@ -1,229 +1,231 @@
-# Fumetti — pipeline di traduzione fumetti, interamente locale
+# Comics_Translate — a fully local comic translation pipeline
 
-Traduce le pagine di un fumetto da una lingua all'altra senza mandare nulla in
-rete: rileva i balloon, ne legge il testo, lo traduce, cancella l'originale
-dalla pagina e ci scrive sopra la traduzione impaginata.
+*[Versione italiana](README.it.md)*
 
-Tutti i modelli girano sulla tua macchina — nessuna API, nessuna chiave, nessun
-servizio esterno.
+Translates comic pages from one language to another without sending anything
+over the network: it finds the speech balloons, reads the text inside them,
+translates it, erases the original from the page and typesets the translation
+back into the balloon.
 
-> **Interfaccia in italiano o inglese**, dalla tab Configurazione.
-> I messaggi di log della pipeline restano in italiano.
+Every model runs on your own machine — no API, no keys, no external service.
+
+> **The interface is available in English or Italian**, from the Settings tab.
+> The pipeline's log messages stay in Italian.
 
 ---
 
-## Come funziona
+## How it works
 
-La pipeline è divisa in stage, eseguibili singolarmente o in sequenza:
+The pipeline is split into stages, which can be run one at a time or in
+sequence:
 
-| Stage | Cosa fa | Cosa usa |
+| Stage | What it does | What it uses |
 |---|---|---|
-| `ocr` | rileva i balloon e ne trascrive il testo | comic-text-detector + YOLO, poi un modello di visione su llama-server |
-| `translate` | traduce le battute, con cache e glossario per fumetto | llama-server |
-| `clean` | cancella il testo originale dai balloon | riempimento deterministico, su CPU |
-| `render` | scrive la traduzione impaginata nel balloon | Pillow |
+| `ocr` | finds the balloons and transcribes their text | comic-text-detector + YOLO, then a vision model on llama-server |
+| `translate` | translates the lines, with a cache and a per-comic glossary | llama-server |
+| `clean` | erases the original text from the balloons | deterministic fill, on CPU |
+| `render` | typesets the translation into the balloon | Pillow |
 
-Due dettagli che spiegano parecchie scelte del codice:
+Two details explain a good deal of the code:
 
-- **llama-server viene avviato all'inizio di uno stage e chiuso alla fine.** È
-  la chiusura del processo a liberare la VRAM per lo stage successivo: non c'è
-  nessun passaggio di "scarica il modello".
-- **La pulizia dei balloon non usa un modello generativo.** Riempie l'area del
-  balloon con il colore di sfondo dominante, preservando il contorno. È
-  deterministica, riproducibile e non ha bisogno di VRAM. Backend basati su
-  inpainting sono stati provati e rimossi: rigeneravano l'intera pagina e
-  introducevano derive visibili.
+- **llama-server is started at the beginning of a stage and shut down at the
+  end.** Killing the process is what frees the VRAM for the next stage, so
+  there is no "unload the model" step anywhere.
+- **Balloon cleaning does not use a generative model.** It fills the balloon
+  area with the dominant background colour while preserving the outline. It is
+  deterministic, reproducible and needs no VRAM. Inpainting-based backends were
+  tried and removed: they regenerated the whole page and introduced visible
+  drift.
 
-Oltre agli stage ci sono un **pretrattamento** facoltativo (passa le pagine
-grezze attraverso ComfyUI prima dell'OCR, per upscale o pulizia del rumore) e
-una **Revisione** interattiva per correggere a mano testo, posizione e
-formattazione dei balloon prima del render finale.
+Besides the stages there is an optional **pretreatment** (runs the raw pages
+through ComfyUI before OCR, for upscaling or denoising) and an interactive
+**Review** window to fix text, position and formatting of individual balloons
+before the final render.
 
-## Interfacce
+## Interfaces
 
-Le stesse funzioni sono disponibili in tre modi:
+The same functionality is available three ways:
 
 ```bash
-python main.py --stage full --comic "Nome del fumetto"   # riga di comando
-python pipeline_gui_tk.py                                # GUI desktop (Tkinter)
-python web_app.py                                        # web app locale
+python main.py --stage full --comic "Comic name"   # command line
+python pipeline_gui_tk.py                          # desktop GUI (Tkinter)
+python web_app.py                                  # local web app
 ```
 
 ---
 
-## Requisiti
+## Requirements
 
-- **Python 3.12+** (sviluppato su 3.14)
-- **[llama.cpp](https://github.com/ggml-org/llama.cpp)** con `llama-server` nel
-  PATH. Su Windows: `winget install ggml.llamacpp`
-- Una GPU aiuta molto ma non è obbligatoria: `llama-server` sceglie da solo
-  quanti layer tenere in VRAM.
-- **ComfyUI** — solo se vuoi il pretrattamento. Tutto il resto funziona senza.
+- **Python 3.12+** (developed on 3.14)
+- **[llama.cpp](https://github.com/ggml-org/llama.cpp)** with `llama-server` on
+  your PATH. On Windows: `winget install ggml.llamacpp`
+- A GPU helps a lot but is not required: `llama-server` decides on its own how
+  many layers fit in VRAM.
+- **ComfyUI** — only if you want the pretreatment step. Everything else works
+  without it.
 
-### Modelli da scaricare
+### Models to download
 
-Nessun modello è incluso nel repository. Servono file GGUF, per esempio:
+No model is bundled with this repository. You need GGUF files, for example:
 
-| Ruolo | Modello usato nello sviluppo |
+| Role | Model used during development |
 |---|---|
-| OCR (visione) | `Qwen3-VL-8B-Instruct` (+ il suo `mmproj`) oppure `PaddleOCR-VL-1.6` |
-| Traduzione | `translategemma-27b-it` (quantizzazione Q4_K_S) |
+| OCR (vision) | `Qwen3-VL-8B-Instruct` (plus its `mmproj`) or `PaddleOCR-VL-1.6` |
+| Translation | `translategemma-27b-it` (Q4_K_S quantisation) |
 
-Vanno bene anche altri modelli: i percorsi si impostano in `config.yaml` o
-dalla tab Configurazione.
+Other models work too: the paths are set in `config.yaml`, or from the Settings
+tab.
 
 ---
 
-## Installazione
+## Installation
 
-Il progetto usa **tre ambienti virtuali separati**, perché il rilevamento dei
-balloon ha bisogno di versioni di torch che non convivono con il resto.
-`detect.py` invoca gli altri due interpreti come processi separati.
+The project uses **three separate virtual environments**, because balloon
+detection needs versions of torch that do not coexist with the rest.
+`detect.py` invokes the other two interpreters as separate processes.
 
 ```bash
-git clone <questo-repo> fumetti
-cd fumetti
+git clone https://github.com/<your-user>/Comics_Translate
+cd Comics_Translate
 
-# 1. ambiente principale (pipeline, GUI, web app)
+# 1. main environment (pipeline, GUI, web app)
 python -m venv venv
 venv/Scripts/python.exe -m pip install -r requirements.txt
 
-# 2. rilevamento del testo — richiede comic-text-detector
+# 2. text detection — needs comic-text-detector
 git clone https://github.com/dmMaze/comic-text-detector
 python -m venv venv_ctd
 venv_ctd/Scripts/python.exe -m pip install -r requirements-ctd.txt
 
-# 3. segmentazione dei balloon
+# 3. balloon segmentation
 python -m venv venv_bubbleseg
 venv_bubbleseg/Scripts/python.exe -m pip install -r requirements-bubbleseg.txt
 ```
 
-Su Windows c'è anche `setup_windows.ps1`, che fa gli stessi passaggi.
+On Windows `setup_windows.ps1` runs the same steps.
 
-Servono poi i **pesi dei modelli di rilevamento**, non inclusi nel repository:
+You then need the **detection model weights**, not included in this repository:
 
-**`comic-text-detector/data/comictextdetector.pt.onnx`** — rilevamento dei
-riquadri di testo. Si scarica dai rilasci del
-[repository originale](https://github.com/dmMaze/comic-text-detector).
+**`comic-text-detector/data/comictextdetector.pt.onnx`** — text region
+detection. Download it from the releases of the
+[original repository](https://github.com/dmMaze/comic-text-detector).
 
-**`bubble_seg/model.pt`** — segmentazione dei balloon, YOLOv8m-seg addestrato
-sulla singola classe `speech bubble`:
+**`bubble_seg/model.pt`** — balloon segmentation, a YOLOv8m-seg model trained
+on the single class `speech bubble`:
 
 ```bash
-# richiede git-lfs
+# requires git-lfs
 git clone https://huggingface.co/kitsumed/yolov8m_seg-speech-bubble
 cp yolov8m_seg-speech-bubble/model.pt bubble_seg/model.pt
 ```
 
-Oppure scaricando il solo file da
+Or download just the file from
 [huggingface.co/kitsumed/yolov8m_seg-speech-bubble](https://huggingface.co/kitsumed/yolov8m_seg-speech-bubble)
-(`model.pt`, 54.809.749 byte,
-SHA-256 `200141c4…50ed610`). È distribuito sotto **GPL-3.0**: usarlo come
-modello, come fa questa pipeline, non impone nulla al codice qui dentro, ma
-tienilo presente se lo ridistribuisci.
+(`model.pt`, 54,809,749 bytes, SHA-256 `200141c4…50ed610`). It is distributed
+under **GPL-3.0**: using it as a model, as this pipeline does, imposes nothing
+on the code here, but keep it in mind if you redistribute it.
 
-Va bene qualunque altro modello di segmentazione dei balloon in formato
-ultralytics: il percorso si imposta in `config.yaml`, sotto `bubble_seg`.
+Any other ultralytics-format balloon segmentation model works: set the path in
+`config.yaml`, under `bubble_seg`.
 
-### Configurazione
+### Configuration
 
 ```bash
 cp config.example.yaml config.yaml
 ```
 
-Poi apri `config.yaml` e imposta i percorsi: cartelle di lavoro (`paths`) e file
-GGUF (`llama_server`). Il file di esempio commenta ogni sezione.
+Then open `config.yaml` and set the paths: working directories (`paths`) and
+GGUF files (`llama_server`). The example file documents every section.
 
-`config.yaml` è in `.gitignore`: le impostazioni locali non finiscono nel
+`config.yaml` is in `.gitignore`, so your local settings never reach the
 repository.
 
 ---
 
-## Uso
+## Usage
 
-Metti le pagine in una sottocartella di `input_dir`, una per fumetto:
+Put the pages in a subfolder of `input_dir`, one folder per comic:
 
 ```
 input_pages/
-  Il mio fumetto - Capitolo 1/
+  My comic - Chapter 1/
     001.jpg
     002.jpg
 ```
 
-Poi:
+Then:
 
 ```bash
-# tutto il fumetto, tutti gli stage
-venv/Scripts/python.exe main.py --stage full --comic "Il mio fumetto - Capitolo 1"
+# whole comic, every stage
+venv/Scripts/python.exe main.py --stage full --comic "My comic - Chapter 1"
 
-# solo alcune pagine
+# only some pages
 venv/Scripts/python.exe main.py --stage ocr --comic "..." --start 0 --end 5
 
-# controlla cosa manca prima di considerarlo finito
+# check what is still missing before calling it done
 venv/Scripts/python.exe main.py --stage audit --comic "..."
 ```
 
-Le pagine finite finiscono in `output_dir`, lo stato intermedio in `work_dir`
-(un `translated.json` per pagina, modificabile a mano).
+Finished pages land in `output_dir`, intermediate state in `work_dir` (one
+`translated.json` per page, editable by hand).
 
-### Rifinire il risultato
+### Polishing the result
 
-Il render automatico non azzecca tutto. La tab **Revisione** apre la pagina
-finita con i balloon come riquadri modificabili: sposta, ridimensiona, correggi
-il testo, cambia font e allineamento, poi rigenera la singola pagina. Segnala
-da sola i balloon dove l'OCR non ha letto nulla e quelli dove il testo è stato
-troncato.
+Automatic rendering does not get everything right. The **Review** tab opens the
+finished page with the balloons as editable boxes: move them, resize them, fix
+the text, change font and alignment, then regenerate that single page. It
+flags on its own the balloons where OCR read nothing and those where the text
+was truncated.
 
-La tab **Correzioni** esporta tutte le battute di un fumetto in un file TXT da
-correggere con un editor esterno, e le reimporta. Le correzioni fatte a mano
-finiscono nella cache di traduzione, così non vengono sovrascritte se rilanci
-lo stage.
-
----
-
-## Struttura
-
-```
-main.py               orchestrazione degli stage
-detect.py             rilevamento balloon (invoca i due venv separati)
-ocr.py                trascrizione via modello di visione
-translate_local.py    traduzione, cache, glossario
-clean.py              cancellazione del testo dal balloon
-render.py             impaginazione e disegno del testo tradotto
-balloon_shape.py      geometria dei balloon (fusi, con codino, ecc.)
-fit_check.py          riscrittura piu' corta quando il testo non entra
-audit.py              controllo di cosa resta da sistemare
-i18n.py               localizzazione dell'interfaccia
-pipeline_gui_tk.py    GUI desktop
-web_app.py            web app locale
-flux_pretreat.py      pretrattamento facoltativo via ComfyUI
-```
+The **Corrections** tab exports every line of a comic to a TXT file you can fix
+in an external editor, and imports it back. Hand-made corrections go into the
+translation cache, so re-running the stage does not overwrite them.
 
 ---
 
-## Software di terze parti
+## Layout
 
-| Componente | Licenza | Come viene usato |
+```
+main.py               stage orchestration
+detect.py             balloon detection (invokes the two separate venvs)
+ocr.py                transcription via the vision model
+translate_local.py    translation, cache, glossary
+clean.py              erasing the text from the balloon
+render.py             typesetting and drawing the translated text
+balloon_shape.py      balloon geometry (fused balloons, tails, ...)
+fit_check.py          shorter rewrite when the text does not fit
+audit.py              report of what is still to fix
+i18n.py               interface localisation
+pipeline_gui_tk.py    desktop GUI
+web_app.py            local web app
+flux_pretreat.py      optional ComfyUI pretreatment
+```
+
+---
+
+## Third-party software
+
+| Component | Licence | How it is used |
 |---|---|---|
-| [comic-text-detector](https://github.com/dmMaze/comic-text-detector) | GPL-3.0 | clonato a parte, eseguito come processo separato nel suo venv |
-| [ultralytics](https://github.com/ultralytics/ultralytics) (YOLO) | AGPL-3.0 | installato in un venv separato, eseguito come processo separato |
-| [llama.cpp](https://github.com/ggml-org/llama.cpp) | MIT | installato a parte, usato come server HTTP |
-| ComfyUI | GPL-3.0 | facoltativo, usato come server HTTP per il solo pretrattamento |
-| [yolov8m_seg-speech-bubble](https://huggingface.co/kitsumed/yolov8m_seg-speech-bubble) | GPL-3.0 | pesi del modello di segmentazione, scaricati a parte |
+| [comic-text-detector](https://github.com/dmMaze/comic-text-detector) | GPL-3.0 | cloned separately, run as a separate process in its own venv |
+| [ultralytics](https://github.com/ultralytics/ultralytics) (YOLO) | AGPL-3.0 | installed in a separate venv, run as a separate process |
+| [llama.cpp](https://github.com/ggml-org/llama.cpp) | MIT | installed separately, used as an HTTP server |
+| ComfyUI | GPL-3.0 | optional, used as an HTTP server for the pretreatment only |
+| [yolov8m_seg-speech-bubble](https://huggingface.co/kitsumed/yolov8m_seg-speech-bubble) | GPL-3.0 | segmentation model weights, downloaded separately |
 
-Nessuno di questi è incluso nel repository, e nessuno è importato dal codice di
-questo progetto: sono programmi separati, invocati via subprocess o via HTTP.
-Se li integri diversamente, verifica gli obblighi delle rispettive licenze.
+None of these is included in this repository, and none is imported by this
+project's code: they are separate programs, invoked over subprocess or HTTP. If
+you integrate them differently, check the obligations of their licences.
 
-I font in `fonts/` hanno licenze proprie: controllale prima di ridistribuirli.
+The fonts in `fonts/` have their own licences: check them before redistributing.
 
-## Nota d'uso
+## A note on use
 
-Questo è uno strumento per tradurre fumetti in locale, pensato per materiale di
-cui hai il diritto di fare una traduzione — opere di pubblico dominio, lavori
-propri, o materiale per cui hai il permesso. Non incoraggia né facilita la
-redistribuzione di opere protette da copyright.
+This is a tool for translating comics locally, meant for material you have the
+right to translate — public domain works, your own work, or material you have
+permission for. It does not encourage or facilitate redistributing copyrighted
+works.
 
-## Licenza
+## Licence
 
-Vedi [LICENSE](LICENSE).
+See [LICENSE](LICENSE).
