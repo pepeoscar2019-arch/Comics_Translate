@@ -1,0 +1,84 @@
+# ─────────────────────────────────────────────────────────────────────────
+# Configurazione locale
+# ─────────────────────────────────────────────────────────────────────────
+# config.yaml contiene percorsi assoluti della macchina su cui gira.
+# Si parte da config.example.yaml: vedi README.
+config.yaml
+
+# ─────────────────────────────────────────────────────────────────────────
+# Ambienti virtuali e dipendenze scaricate
+# ─────────────────────────────────────────────────────────────────────────
+venv/
+venv_*/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Alberi di terze parti clonati/estratti dal setup, non nostri
+comic-text-detector/
+llama.cpp/
+sdcpp/
+
+# ─────────────────────────────────────────────────────────────────────────
+# Pesi dei modelli (centinaia di MB, si scaricano a parte)
+# ─────────────────────────────────────────────────────────────────────────
+*.pt
+*.pth
+*.gguf
+*.safetensors
+*.onnx
+
+# ─────────────────────────────────────────────────────────────────────────
+# Dati di lavoro e output
+# ─────────────────────────────────────────────────────────────────────────
+# Le pagine dei fumetti non vanno mai nel repository: sono materiale
+# di terzi, spesso protetto da copyright.
+input_pages/
+output_pages/
+pretreated_pages/
+work/
+bubble_masks/
+_backups/
+translate_cache.json
+
+# ─────────────────────────────────────────────────────────────────────────
+# Runtime: log, pid, file temporanei
+# ─────────────────────────────────────────────────────────────────────────
+*.log
+*.log.err
+*.pid
+*.tmp
+
+# ─────────────────────────────────────────────────────────────────────────
+# Archivi, installer, immagini di prova finiti nella cartella di lavoro
+# ─────────────────────────────────────────────────────────────────────────
+*.rar
+*.zip
+*.cbz
+*.cbr
+*.7z
+*.exe
+*.pdf
+*.jpg
+*.jpeg
+*.png
+*.webp
+# ...ma le immagini della documentazione servono
+!docs/**/*.png
+!docs/**/*.jpg
+
+# ─────────────────────────────────────────────────────────────────────────
+# Sistema operativo ed editor
+# ─────────────────────────────────────────────────────────────────────────
+Thumbs.db
+desktop.ini
+.DS_Store
+.vscode/
+.idea/
+
+# Log e stato del setup
+setup_log.txt
+
+# Configurazione locale di Claude Code
+.claude/

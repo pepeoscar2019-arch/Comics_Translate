@@ -1,0 +1,18 @@
+# Ambiente per comic-text-detector (rilevamento dei riquadri di testo).
+# Gira come processo separato: detect.py lo invoca con questo interprete.
+#   python -m venv venv_ctd
+#   venv_ctd\Scripts\python.exe -m pip install -r requirements-ctd.txt
+#
+# torch CPU basta: il rilevamento e' leggero e cosi' la VRAM resta libera
+# per il modello di OCR/traduzione.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch>=2.2
+torchvision>=0.17
+torchsummary
+opencv-python>=4.10
+numpy>=2.0
+pillow>=11.0
+pyclipper
+shapely
+PyYAML>=6.0
+tqdm

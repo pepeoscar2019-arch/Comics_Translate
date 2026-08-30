@@ -1,0 +1,88 @@
+# Configurazione di esempio.
+#
+#   1. copia questo file in config.yaml
+#   2. sostituisci i percorsi segnaposto con quelli della tua macchina
+#
+# config.yaml e' in .gitignore: le tue impostazioni locali non finiscono nel
+# repository.
+#
+# Riferimento delle sezioni:
+#
+#   paths          cartelle di lavoro. input_dir contiene una sottocartella
+#                  per fumetto (o direttamente le pagine, se ne fai uno solo).
+#   llama_server   modelli GGUF caricati da llama-server per OCR e traduzione,
+#                  uno alla volta. n_gpu_layers: null lascia decidere a
+#                  llama.cpp quanti layer stanno in VRAM - forzarlo a 99 fa
+#                  morire il server sui modelli grandi.
+#                  translate_extra_args serve ai modelli con un chat template
+#                  che llama-server non sa interpretare (translategemma).
+#   local_llm      lingue di partenza/arrivo e system prompt della traduzione.
+#                  base_url viene riallineato a runtime alla porta qui sopra.
+#   ocr_backend    "qwen" oppure "paddleocr_vl".
+#   detection      rilevamento dei balloon (comic-text-detector).
+#   bubble_seg     segmentazione delle maschere dei balloon (YOLO).
+#   comfyui        usato SOLO dal pretrattamento facoltativo, non dalla
+#                  pulizia. Si puo' ignorare se non lo usi.
+#   rendering      font, dimensioni, impaginazione del testo tradotto.
+#   fit_check      riscrittura piu' corta quando il testo non entra.
+#   ui             lingua dell'interfaccia: "it" o "en".
+#
+bubble_seg:
+  conf: 0.25
+  enabled: true
+  model_path: bubble_seg/model.pt
+comfyui:
+  base_url: http://127.0.0.1:8188
+  load_node_id: '198'
+  save_node_id: '203'
+  timeout: 300
+  workflow_path: Flux-Klein.json
+detection:
+  mask_dilation_px: 2
+fit_check:
+  enabled: true
+  min_ratio: 0.75
+flux_pretreat:
+  last_prompt: 'Keep the image identical in every detail: same framing, same scale,
+    same art style, no watermark added, same text, same balloon text with text inside.
+
+    Remove ONLY the logo yellow/red tufos.com.br on the extreme bottom of the image'
+llama_server:
+  ctx_size: 8192
+  n_gpu_layers: null
+  ocr_extra_args: []
+  ocr_mmproj_path: /percorso/ai/modelli/Qwen3-VL-8B-Instruct-GGUF/mmproj-Qwen3-VL-8B-Instruct-F16.gguf
+  ocr_model_path: /percorso/ai/modelli/Qwen3-VL-8B-Instruct-GGUF/Qwen3-VL-8B-Instruct-Q4_K_M.gguf
+  paddleocr_mmproj_path: /percorso/ai/modelli/PaddleOCR-VL-1.6-GGUF/PaddleOCR-VL-1.6-mmproj.gguf
+  paddleocr_model_path: /percorso/ai/modelli/PaddleOCR-VL-1.6-GGUF/PaddleOCR-VL-1.6.gguf
+  port: 8081
+  startup_timeout: 180
+  translate_extra_args:
+  - --no-jinja
+  - --chat-template
+  - gemma
+  translate_model_path: /percorso/ai/modelli/translategemma-27b-it-GGUF/translategemma-27b-it.Q4_K_S.gguf
+local_llm:
+  base_url: http://127.0.0.1:8081/v1
+  source_lang: en
+  target_lang: it
+  translate_system_prompt: You are a professional comic book translator. Keep the
+    original tone, register and profanity.
+ocr_backend: paddleocr_vl
+paths:
+  input_dir: /percorso/lavoro/input_pages
+  output_dir: /percorso/lavoro/output_pages
+  work_dir: /percorso/lavoro/work
+pipeline:
+  max_workers: 2
+  parallel_translation: true
+rendering:
+  fixed_font_size: null
+  font_path: fonts/animeace2_reg.ttf
+  fonts_dir: fonts
+  line_spacing: 1.25
+  max_font_size: 200
+  min_font_size: 8
+  safe_area_ratio: 0.85
+ui:
+  language: it

@@ -1,0 +1,15 @@
+# Ambiente per la segmentazione dei balloon (YOLO/ultralytics).
+# Gira come processo separato: detect.py lo invoca con questo interprete.
+#   python -m venv venv_bubbleseg
+#   venv_bubbleseg\Scripts\python.exe -m pip install -r requirements-bubbleseg.txt
+#
+# ATTENZIONE ALLA LICENZA: ultralytics e' AGPL-3.0. Qui e' usato come
+# programma separato, in un venv proprio, invocato via subprocess - non e'
+# importato dal codice di questo progetto. Se lo integri diversamente,
+# verifica gli obblighi della AGPL.
+--extra-index-url https://download.pytorch.org/whl/cpu
+ultralytics>=8.3
+torch>=2.2
+torchvision>=0.17
+opencv-python>=4.10
+numpy>=2.0
