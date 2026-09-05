@@ -1489,18 +1489,39 @@ class ReviewWindow:
         for label, value in (("Sinistra", "left"), ("Centro", "center"), ("Destra", "right")):
             ttk.Radiobutton(align_frame, text=label, variable=align_var, value=value).pack(side=LEFT)
 
-        # Rilevante solo per balloon doppi/a clessidra (balloon_source
-        # yolov8seg) con box ridimensionato a mano: senza questo flag, un box
-        # ridimensionato salta il fitting a maschera e usa il rettangolo
-        # pieno, che puo' sconfinare oltre il "collo" stretto tra i due lobi
+        # Vale per QUALSIASI balloon con sagoma reale (balloon_source
+        # yolov8seg), non solo per i doppi/a clessidra: qualunque intervento
+        # manuale (size, interlinea, stile, box ridimensionato) fa saltare il
+        # fitting a maschera e passare al rettangolo pieno del bbox, che non
+        # e' la curva del balloon — sui doppi sconfina nel "collo" tra i due
+        # lobi, su un balloon singolo ovale sconfina agli angoli arrotondati
         # (vedi commento su manual_respect_shape in render.py).
+        #
+        # Per questo il flag parte ATTIVO sui balloon con sagoma reale: e' il
+        # comportamento giusto nella stragrande maggioranza dei casi. Fa
+        # eccezione il box gia' spostato/ridimensionato a mano
+        # (manual_text_box): li' la maschera non corrisponde piu' alla
+        # posizione scelta, e seguirla rimetterebbe il testo sulla vecchia
+        # sagoma (vedi _commit_bbox_changes, che infatti spegne il flag).
         shape_fit_frame = Frame(editor_frame, bg="white")
         shape_fit_frame.pack(fill=X, side=BOTTOM, padx=2)
-        respect_shape_var = BooleanVar(value=bool(det.get("manual_respect_shape")))
+        _shape_fit_available = bool(
+            det.get("balloon_source") == "yolov8seg" and det.get("mask_path")
+        )
+        _shape_fit_default = _shape_fit_available and not det.get("manual_text_box")
+        respect_shape_var = BooleanVar(
+            value=bool(det.get("manual_respect_shape")) or _shape_fit_default
+        )
         ttk.Checkbutton(
-            shape_fit_frame, text="Segui sagoma balloon (doppio/clessidra)",
+            shape_fit_frame, text="Segui sagoma balloon",
             variable=respect_shape_var,
+            state=(NORMAL if _shape_fit_available else DISABLED),
         ).pack(side=LEFT)
+        if not _shape_fit_available:
+            Label(
+                shape_fit_frame, text="(nessuna sagoma per questo balloon)",
+                bg="white", fg="gray50", font=("Arial", 8, "italic"),
+            ).pack(side=LEFT, padx=(4, 0))
 
         size_frame = Frame(editor_frame, bg="white")
         size_frame.pack(fill=X, side=BOTTOM, padx=2)

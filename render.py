@@ -1349,8 +1349,19 @@ def _draw_text_in_bbox(
     # quelle si va dritti al percorso rettangolare qui sotto
     # (_measure_balloon_extent / _safe_area + _fit_text_to_box), che e'
     # esattamente cio' che serve a un riquadro di didascalia.
-    auto_min_size = forced_size or render_cfg["min_font_size"]
-    auto_max_size = forced_size or render_cfg["max_font_size"]
+    # Un balloon manuale arriva qui solo con "Segui sagoma balloon" attivo
+    # (respect_shape): la sagoma sostituisce il rettangolo per il FITTING, ma
+    # la dimensione/interlinea scelte dall'utente restano sue e vincono su
+    # forced_size, esattamente come sul percorso a rettangolo. Senza questo,
+    # attivare "segui sagoma" su un balloon a size manuale la buttava via in
+    # silenzio, tornando alla ricerca automatica.
+    manual_size = manual_style.get("manual_font_size") if (manual_style and manual_box) else None
+    auto_min_size = manual_size or forced_size or render_cfg["min_font_size"]
+    auto_max_size = manual_size or forced_size or render_cfg["max_font_size"]
+    mask_line_spacing = (
+        (manual_style.get("manual_line_spacing") if (manual_style and manual_box) else None)
+        or render_cfg["line_spacing"]
+    )
 
     mask = _load_mask_array(mask_path) if (mask_path and trust_mask_shape) else None
     if mask is not None and extra_shape is not None:
@@ -1386,7 +1397,7 @@ def _draw_text_in_bbox(
             effective_font_path,
             auto_min_size,
             auto_max_size,
-            render_cfg["line_spacing"],
+            mask_line_spacing,
             trust_single_lobe_shape=trust_mask_shape,
         )
 
@@ -1401,7 +1412,18 @@ def _draw_text_in_bbox(
                 # essere allineati, e centrare su un cx fisso fa sconfinare
                 # il testo dal lato dove la bolla e' piu' stretta.
                 x = x_center - line_width / 2
-                draw.text((x, y), line, font=font, fill=fill_color)
+                # Grassetto/corsivo/contorno/sottolineato valgono anche qui:
+                # un balloon con "segui sagoma" attivo passa da questo ramo,
+                # e disegnarlo con un draw.text nudo perdeva gli stili scelti
+                # in Revisione (che invece il ramo a rettangolo applicava).
+                if style:
+                    _draw_line_styled(image, draw, x, y, line, font, fill_color, style)
+                    if style.get("underline"):
+                        underline_y = y + line_bbox[3] + max(1, round(font.size * 0.08))
+                        draw.line([(x, underline_y), (x + line_width, underline_y)],
+                                  fill=fill_color, width=max(1, round(font.size * 0.05)))
+                else:
+                    draw.text((x, y), line, font=font, fill=fill_color)
         return False, font.size  # _fit_text_to_mask non tronca mai: o entra, o fallback al rettangolo
 
     # Fallback: nessun lobo doppio rilevato dalla maschera. Prova prima a
@@ -1434,10 +1456,16 @@ def _draw_text_in_bbox(
         effective_font_path,
         auto_min_size,
         auto_max_size,
-        render_cfg["line_spacing"],
+        mask_line_spacing,
     )
     if not dry_run:
-        _draw_lines_centered(draw, lines, font, x1, y1, box_width, box_height, render_cfg["line_spacing"], fill_color)
+        # Anche qui (maschera presente ma fitting fallito) un balloon manuale
+        # con "segui sagoma" deve conservare stile e allineamento scelti.
+        _draw_lines_centered(
+            draw, lines, font, x1, y1, box_width, box_height, mask_line_spacing, fill_color,
+            align=(manual_style.get("manual_align") if (manual_style and manual_box) else None) or "center",
+            style=style, image=image,
+        )
     return overflowed, font.size
 
 
