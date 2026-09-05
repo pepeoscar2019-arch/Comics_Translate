@@ -208,6 +208,133 @@ def _dedupe_overlapping_bubbles(bubbles_json_path: Path, containment_ratio: floa
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 
+_MIN_PARTIAL_OVERLAP = 0.25
+"""Frazione minima dell'area della maschera piu' piccola che deve ricadere
+dentro la piu' grande perche' le due siano considerate lo stesso balloon
+visto due volte (e non due balloon che semplicemente si sfiorano)."""
+
+_MIN_REMAINDER_RATIO = 0.15
+"""Frazione minima dell'area originale che un frammento deve conservare per
+sopravvivere alla sottrazione: sotto questa soglia e' bava del contorno, non
+un balloon."""
+
+
+def _subtract_overlapping_bubbles(
+    bubbles_json_path: Path,
+    min_overlap: float = _MIN_PARTIAL_OVERLAP,
+    containment_ratio: float = 0.8,
+) -> None:
+    """
+    Caso intermedio tra quelli gestiti da _dedupe_overlapping_bubbles e da
+    _split_fused_bubbles: bubble_seg rileva UN balloon da solo e, con una
+    seconda detection, lo stesso balloon fuso col vicino ma tagliato a
+    meta' (la maschera fusa copre solo una parte del primo balloon, piu'
+    tutto il secondo).
+
+    Le due maschere si sovrappongono troppo poco perche' la deduplica le
+    scarti (la piu' piccola non e' "quasi interamente contenuta" nella
+    fusa) e la fusa arriva intatta a _split_fused_bubbles: li' contiene due
+    box di testo, quindi viene divisa in due parti che non corrispondono ai
+    due balloon fisici - il taglio passa dove la maschera e' monca. Il
+    risultato sono tre detection sovrapposte sulla stessa coppia di
+    balloon, con testo ripetuto e impaginato su aree sbagliate
+    (4 . An Unconventional Couple, pagina 009, doppio balloon in alto a
+    sinistra).
+
+    La correzione e' sottrarre dalla maschera grande quella piccola: la
+    parte gia' coperta dalla detection singola - piu' pulita, perche' segue
+    il balloon intero - resta a lei, e alla maschera fusa rimane solo il
+    balloon che nessun altro copre. Se dopo la sottrazione non resta nulla
+    di significativo, la maschera grande era solo un duplicato mal
+    ritagliato e viene scartata.
+
+    Va eseguita DOPO _dedupe_overlapping_bubbles (i duplicati veri sono gia'
+    spariti, qui restano solo le sovrapposizioni parziali) e PRIMA di
+    _split_fused_bubbles, che si aspetta maschere non ridondanti.
+    """
+    with open(bubbles_json_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    bubbles = data.get("bubbles", [])
+    if len(bubbles) < 2:
+        return
+
+    masks: list[np.ndarray | None] = []
+    for b in bubbles:
+        m = cv2.imread(b["mask_path"], cv2.IMREAD_GRAYSCALE)
+        masks.append(None if m is None else (m > 0))
+    areas = [0 if m is None else int(m.sum()) for m in masks]
+    orig_areas = list(areas)
+
+    dropped: set[int] = set()
+    changed: set[int] = set()
+    # Dalla piu' piccola alla piu' grande: le maschere singole (piu' strette)
+    # fanno da "sottraendo" e ritagliano quelle fuse, mai il contrario.
+    order = sorted(range(len(bubbles)), key=lambda k: areas[k])
+    for i in order:
+        if masks[i] is None or areas[i] == 0 or i in dropped:
+            continue
+        for j in order:
+            if j == i or masks[j] is None or j in dropped:
+                continue
+            if areas[j] <= areas[i]:
+                continue
+            inter = int(np.logical_and(masks[i], masks[j]).sum())
+            frac = inter / areas[i]
+            if frac < min_overlap or frac >= containment_ratio:
+                # Sotto soglia sono balloon distinti che si sfiorano; sopra
+                # ci pensa gia' la deduplica per contenimento.
+                continue
+            remainder = _significant_parts(
+                np.logical_and(masks[j], np.logical_not(masks[i])), orig_areas[j]
+            )
+            if remainder is None:
+                dropped.add(j)
+                continue
+            masks[j] = remainder
+            areas[j] = int(remainder.sum())
+            changed.add(j)
+
+    if not dropped and not changed:
+        return
+
+    kept: list[dict] = []
+    for idx, b in enumerate(bubbles):
+        if idx in dropped:
+            continue
+        if idx in changed:
+            m = masks[idx]
+            cv2.imwrite(b["mask_path"], (m.astype(np.uint8) * 255))
+            ys, xs = np.where(m)
+            b["bbox"] = [int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1]
+        kept.append(b)
+    for i, b in enumerate(kept):
+        b["bubble_id"] = i
+    data["bubbles"] = kept
+    log.info(
+        f"bubble_seg: risolte sovrapposizioni parziali "
+        f"({len(changed)} maschera/e ritagliata/e, {len(dropped)} scartata/e)"
+    )
+    with open(bubbles_json_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+def _significant_parts(remainder: np.ndarray, orig_area: int) -> np.ndarray | None:
+    """
+    Ripulisce il risultato di una sottrazione tra maschere dai frammenti di
+    contorno: tiene solo le componenti connesse abbastanza grandi rispetto
+    all'area originale. Restituisce None se non ne resta nessuna.
+    """
+    min_part = max(int(orig_area * _MIN_REMAINDER_RATIO), 300)
+    n, labels, stats, _ = cv2.connectedComponentsWithStats(
+        remainder.astype(np.uint8), 8
+    )
+    out = np.zeros_like(remainder)
+    for k in range(1, n):
+        if stats[k, cv2.CC_STAT_AREA] >= min_part:
+            out |= labels == k
+    return out if out.any() else None
+
+
 _MIN_CONCAVITY_DEPTH_PX = 8.0
 """Profondita' minima (px) perche' una rientranza del contorno conti come
 punto di contatto tra due balloon fusi e non come frastagliatura della
@@ -972,6 +1099,10 @@ def run(page_path: Path, cfg: dict, work_dir: Path) -> Path:
             _dedupe_overlapping_bubbles(bubbles_json_path)
         except Exception as e:
             log.warning(f"Deduplica balloon sovrapposti fallita per {page_path.name} ({e}), proseguo con le maschere originali.")
+        try:
+            _subtract_overlapping_bubbles(bubbles_json_path)
+        except Exception as e:
+            log.warning(f"Risoluzione sovrapposizioni parziali fallita per {page_path.name} ({e}), proseguo con le maschere originali.")
         try:
             _split_fused_bubbles(bubbles_json_path, detections_json_path)
         except Exception as e:
